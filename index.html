@@ -98,6 +98,39 @@
   .cell.conflict  { background: var(--conflict-bg); color: var(--accent); }
   .cell.correct   { background: var(--correct-bg); }
 
+  /* notes grid inside cell */
+  .cell .notes {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    width: 100%; height: 100%;
+    padding: 2px;
+    gap: 0;
+  }
+  .cell .note-digit {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.38rem;
+    color: var(--accent2);
+    display: flex; align-items: center; justify-content: center;
+    line-height: 1;
+  }
+
+  /* note mode toggle button */
+  #btn-note {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+  }
+  #btn-note.active {
+    background: var(--accent2);
+    border-color: var(--accent2);
+    color: white;
+  }
+  #btn-note.active:hover {
+    background: #1a4a70;
+    border-color: #1a4a70;
+  }
+
   .cell input {
     position: absolute; inset: 0; width: 100%; height: 100%;
     border: none; background: transparent; text-align: center;
@@ -203,6 +236,7 @@
   <div class="numpad" id="numpad"></div>
 
   <div class="controls">
+    <button id="btn-note" onclick="toggleNoteMode()">Nota</button>
     <button class="primary" id="btn-check" onclick="checkAttempt()">Comprobar</button>
   </div>
 </div>
@@ -372,6 +406,8 @@ let timerSecs    = 0;
 let timerInt     = null;
 let timerStarted = false;
 let _shareStr    = '';
+let noteMode     = false;
+let notes        = Array.from({length:SIZE}, () => Array.from({length:SIZE}, () => new Set()));
 
 // ══════════════════════════════════════════════════════════
 // RENDER GRID
@@ -434,9 +470,48 @@ function selectCell(r, c) {
   refreshHighlights();
 }
 
+function toggleNoteMode() {
+  noteMode = !noteMode;
+  const btn = document.getElementById('btn-note');
+  btn.classList.toggle('active', noteMode);
+  btn.textContent = noteMode ? '✏ Nota' : '✏ Nota';
+}
+
+function renderNotes(r, c) {
+  const el = document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+  if (!el) return;
+  el.textContent = '';
+  const div = document.createElement('div');
+  div.className = 'notes';
+  for (let n = 1; n <= 5; n++) {
+    const span = document.createElement('span');
+    span.className = 'note-digit';
+    span.textContent = notes[r][c].has(n) ? n : '';
+    div.appendChild(span);
+  }
+  el.appendChild(div);
+}
+
 function enterNumber(n) {
   if (!selectedCell || gameOver) return;
   const [r, c] = selectedCell;
+
+  if (noteMode) {
+    if (n === 0) { notes[r][c].clear(); }
+    else if (notes[r][c].has(n)) { notes[r][c].delete(n); }
+    else { notes[r][c].add(n); }
+    // clear solution value if entering notes
+    userGrid[r][c] = 0;
+    renderNotes(r, c);
+    // re-apply selection highlight since textContent was replaced
+    const el = document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+    if (el) el.classList.add('selected');
+    saveState();
+    return;
+  }
+
+  // solution mode — clear notes for this cell
+  notes[r][c].clear();
   userGrid[r][c] = n;
   saveState();
   refreshHighlights();
@@ -465,9 +540,16 @@ function refreshHighlights() {
   document.querySelectorAll('.cell').forEach(el => {
     el.classList.remove('selected', 'highlight');
     const r = +el.dataset.r, c = +el.dataset.c;
-    const val = puzzle.givens[`${r},${c}`] || userGrid[r][c];
-    if (val) el.textContent = val || '';
-    else el.textContent = '';
+    const key = `${r},${c}`;
+    const given = puzzle.givens[key];
+    const val = given || userGrid[r][c];
+    if (val) {
+      el.textContent = val;
+    } else if (!given && notes[r][c] && notes[r][c].size > 0) {
+      renderNotes(r, c);
+    } else {
+      el.textContent = '';
+    }
   });
 
   if (!selectedCell) return;
@@ -688,8 +770,9 @@ function startCountdown() {
 // LOCALSTORAGE
 // ══════════════════════════════════════════════════════════
 function saveState() {
+  const notesSerial = notes.map(row => row.map(s => [...s]));
   localStorage.setItem('sudomini_state', JSON.stringify({
-    date: todayKey, userGrid, attemptsUsed, attemptHistory, gameOver, timerSecs
+    date: todayKey, userGrid, attemptsUsed, attemptHistory, gameOver, timerSecs, notesSerial
   }));
 }
 function loadState() {
@@ -700,18 +783,25 @@ function loadState() {
 }
 function restoreState(s) {
   userGrid       = s.userGrid || userGrid;
+  if (s.notesSerial) {
+    notes = s.notesSerial.map(row => row.map(arr => new Set(arr)));
+  }
   attemptsUsed   = s.attemptsUsed || 0;
   attemptHistory = s.attemptHistory || [];
   gameOver       = s.gameOver || false;
   timerSecs      = s.timerSecs || 0;
   document.getElementById('timer-display').textContent = formatTime(timerSecs);
 
-  // repaint values
+  // repaint values and notes
   for (let r = 0; r < SIZE; r++)
     for (let c = 0; c < SIZE; c++) {
-      if (!userGrid[r][c]) continue;
-      const el = document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
-      if (el) el.textContent = userGrid[r][c];
+      if (puzzle.givens[`${r},${c}`]) continue;
+      if (userGrid[r][c]) {
+        const el = document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+        if (el) el.textContent = userGrid[r][c];
+      } else if (notes[r][c].size > 0) {
+        renderNotes(r, c);
+      }
     }
 
   // repaint last attempt colors
