@@ -109,7 +109,7 @@
   }
   .cell .note-digit {
     font-family: 'DM Mono', monospace;
-    font-size: 0.38rem;
+    font-size: 0.52rem;
     color: var(--accent2);
     display: flex; align-items: center; justify-content: center;
     line-height: 1;
@@ -142,7 +142,7 @@
 
   /* ── NUMBER PAD ── */
   .numpad {
-    display: flex; gap: 8px;
+    display: flex; gap: 8px; margin-top: 12px;
   }
   .num-btn {
     width: var(--cell-size); height: var(--cell-size);
@@ -236,7 +236,7 @@
   <div class="numpad" id="numpad"></div>
 
   <div class="controls">
-    <button id="btn-note" onclick="toggleNoteMode()">Nota</button>
+    <button id="btn-note" onclick="toggleNoteMode()">✏ Nota</button>
     <button class="primary" id="btn-check" onclick="checkAttempt()">Comprobar</button>
   </div>
 </div>
